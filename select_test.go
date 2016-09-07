@@ -147,6 +147,11 @@ func (suite *SelectTestSuite) TestJoin() {
 		InnerJoin(suite.users, suite.sessions.C("user_id"), suite.users.C("id")).
 		Where(Eq(suite.sessions.C("user_id"), 5))
 
+	assert.Equal(suite.T(), suite.sessions.C("user_id"), selInnerJoin.from.C("user_id"))
+	assert.Panics(suite.T(), func() { selInnerJoin.from.C("invalid") })
+
+	assert.Equal(suite.T(), len(suite.sessions.All())+len(suite.users.All()), len(selInnerJoin.from.All()))
+
 	var statement *Stmt
 
 	statement = selInnerJoin.Build(suite.sqlite)
@@ -234,6 +239,83 @@ func (suite *SelectTestSuite) TestGroupByHaving() {
 	statement = sel.Build(suite.postgres)
 	assert.Equal(suite.T(), "SELECT COUNT(\"id\")\nFROM \"sessions\"\nGROUP BY \"user_id\"\nHAVING SUM(\"id\") > $1;", statement.SQL())
 	assert.Equal(suite.T(), []interface{}{4}, statement.Bindings())
+}
+
+func (suite *SelectTestSuite) TestAlias() {
+	sessionA := Alias("newname", suite.sessions)
+	sel := Select(sessionA.C("id")).From(sessionA)
+	st := sel.Build(suite.sqlite)
+	assert.Equal(suite.T(), "SELECT id\nFROM sessions AS newname;", st.SQL())
+
+	sel = Select(sessionA.All()...).From(sessionA)
+	sql := sel.Build(suite.mysql).SQL()
+	assert.Contains(suite.T(), sql, "`id`", st.SQL())
+	assert.Contains(suite.T(), sql, "`user_id`", st.SQL())
+	assert.Contains(suite.T(), sql, "`auth_token`", st.SQL())
+
+	usersA := Alias("u", suite.users)
+	sel = Select(usersA.C("email")).
+		From(usersA).
+		LeftJoin(sessionA, usersA.C("id"), sessionA.C("user_id")).
+		Where(sessionA.C("auth_token").Eq("42"))
+	st = sel.Build(suite.postgres)
+	assert.Equal(suite.T(), `SELECT "u"."email"
+FROM "users" AS "u"
+LEFT OUTER JOIN "sessions" AS "newname" ON "u"."id" = "newname"."user_id"
+WHERE "newname"."auth_token" = $1;`, st.SQL())
+}
+
+func (suite *SelectTestSuite) TestGuessJoinOnClause() {
+	t1 := Table(
+		"t1",
+		Column("c1", Int()),
+		Column("c2", Int()),
+	)
+	t2 := Table(
+		"t2",
+		Column("c1", Int()),
+		Column("c2", Int()),
+	)
+	t3 := Table(
+		"t3",
+		Column("c1", Int()),
+		Column("c2", Int()),
+		ForeignKey("c1").References("t1", "c1"),
+		ForeignKey("c1").References("t2", "c1"),
+		ForeignKey("c2").References("t2", "c2"),
+	)
+	t4 := Table(
+		"t4",
+		Column("c1", Int()),
+		Column("c2", Int()),
+		ForeignKey("c1", "c2").References("t1", "c1", "c2"),
+	)
+
+	assert.Panics(suite.T(), func() {
+		GuessJoinOnClause(t1, Alias("tt", t3))
+	})
+
+	assert.Panics(suite.T(), func() {
+		GuessJoinOnClause(Alias("tt", t3), t2)
+	})
+
+	assert.Panics(suite.T(), func() {
+		GuessJoinOnClause(t1, t2)
+	})
+
+	assert.Equal(suite.T(), "t3.c1 = t1.c1", asDefSQL(GuessJoinOnClause(t3, t1)))
+	assert.Equal(suite.T(), "t3.c1 = t1.c1", asDefSQL(GuessJoinOnClause(t1, t3)))
+	assert.Equal(suite.T(), "(t4.c1 = t1.c1 AND t4.c2 = t1.c2)", asDefSQL(GuessJoinOnClause(t4, t1)))
+
+	assert.Panics(suite.T(), func() {
+		GuessJoinOnClause(t2, t3)
+	})
+}
+
+func (suite *SelectTestSuite) TestMakeJoinOnClause() {
+	assert.Panics(suite.T(), func() {
+		MakeJoinOnClause(TableElem{}, TableElem{}, And(), And(), And())
+	})
 }
 
 func TestSelectTestSuite(t *testing.T) {
