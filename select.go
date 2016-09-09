@@ -23,14 +23,14 @@ func Select(clauses ...Clause) SelectStmt {
 
 // SelectStmt is the base struct for building select statements
 type SelectStmt struct {
-	sel     []Clause
-	from    Selectable
-	groupBy []ColumnElem
-	orderBy *OrderByClause
-	having  []HavingClause
-	where   *WhereClause
-	offset  *int
-	count   *int
+	sel         []Clause
+	from        Selectable
+	groupBy     []ColumnElem
+	orderBy     *OrderByClause
+	having      []HavingClause
+	WhereClause *WhereClause
+	offset      *int
+	count       *int
 }
 
 // From sets the from selectable of select statement
@@ -42,7 +42,7 @@ func (s SelectStmt) From(selectable Selectable) SelectStmt {
 // Where sets the where clause of select statement
 func (s SelectStmt) Where(clause Clause) SelectStmt {
 	where := Where(clause)
-	s.where = &where
+	s.WhereClause = &where
 	return s
 }
 
