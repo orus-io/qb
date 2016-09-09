@@ -46,7 +46,7 @@ type SQLCompiler struct {
 }
 
 func (c SQLCompiler) VisitAggregate(context *CompilerContext, aggregate AggregateClause) string {
-	return fmt.Sprintf("%s(%s)", aggregate.fn, aggregate.column.Accept(context))
+	return fmt.Sprintf("%s(%s)", aggregate.fn, aggregate.clause.Accept(context))
 }
 
 func (c SQLCompiler) VisitColumn(context *CompilerContext, column ColumnElem) string {
