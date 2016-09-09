@@ -23,14 +23,14 @@ func Select(clauses ...Clause) SelectStmt {
 
 // SelectStmt is the base struct for building select statements
 type SelectStmt struct {
-	sel     []Clause
-	from    Selectable
-	groupBy []ColumnElem
-	orderBy *OrderByClause
-	having  []HavingClause
-	where   *WhereClause
-	offset  *int
-	count   *int
+	sel         []Clause
+	from        Selectable
+	groupBy     []ColumnElem
+	orderBy     *OrderByClause
+	having      []HavingClause
+	WhereClause *WhereClause
+	offset      *int
+	count       *int
 }
 
 // Select sets the selected columns
@@ -48,7 +48,7 @@ func (s SelectStmt) From(selectable Selectable) SelectStmt {
 // Where sets the where clause of select statement
 func (s SelectStmt) Where(clause Clause) SelectStmt {
 	where := Where(clause)
-	s.where = &where
+	s.WhereClause = &where
 	return s
 }
 
@@ -211,6 +211,12 @@ func MakeJoinOnClause(left Selectable, right Selectable, onClause ...Clause) Cla
 	}
 }
 
+// Join returns a new JoinClause
+// onClause can be one of:
+// - 0 clause: attempt to guess the join clause (only if left & right are tables),
+//             otherwise panics
+// - 1 clause: use it directly
+// - 2 clauses: use a Eq() of both
 func Join(joinType string, left Selectable, right Selectable, onClause ...Clause) JoinClause {
 	return JoinClause{
 		JoinType: joinType,
@@ -234,14 +240,19 @@ func (c JoinClause) Accept(context *CompilerContext) string {
 	return context.Compiler.VisitJoin(context, c)
 }
 
+// All returns the columns from both sides of the join
 func (c JoinClause) All() []Clause {
 	return append(c.Left.All(), c.Right.All()...)
 }
 
+// ColumnList returns the columns from both sides of the join
 func (c JoinClause) ColumnList() []ColumnElem {
 	return append(c.Left.ColumnList(), c.Right.ColumnList()...)
 }
 
+// C returns the first column with the given name
+// If columns from both sides of the join match the name,
+// the one from the left side will be returned.
 func (c JoinClause) C(name string) ColumnElem {
 	for _, c := range c.ColumnList() {
 		if c.Name == name {
@@ -251,6 +262,7 @@ func (c JoinClause) C(name string) ColumnElem {
 	panic(fmt.Sprintf("No such column '%s' in join %v", name, c))
 }
 
+// DefaultName returns an empty string because Joins have no name by default
 func (c JoinClause) DefaultName() string {
 	return ""
 }
@@ -275,11 +287,12 @@ type HavingClause struct {
 	value     interface{}
 }
 
-// Accept generates having sql & bindings out of HavingClause struct
+// Accept calls the compiler VisitHaving function
 func (c HavingClause) Accept(context *CompilerContext) string {
 	return context.Compiler.VisitHaving(context, c)
 }
 
+// Alias returns a new AliasClause
 func Alias(name string, selectable Selectable) AliasClause {
 	return AliasClause{
 		Name:       name,
@@ -287,21 +300,28 @@ func Alias(name string, selectable Selectable) AliasClause {
 	}
 }
 
+// AliasClause is a ALIAS sql clause
 type AliasClause struct {
 	Name       string
 	Selectable Selectable
 }
 
+// Accept calls the compiler VisitAlias function
 func (c AliasClause) Accept(context *CompilerContext) string {
 	return context.Compiler.VisitAlias(context, c)
 }
 
+// C returns the aliased selectable column with the given name.
+// Before returning it, the 'Table' field is updated with alias
+// name so that they can be used in Select()
 func (c AliasClause) C(name string) ColumnElem {
 	col := c.Selectable.C(name)
 	col.Table = c.Name
 	return col
 }
 
+// All returns the aliased selectable columns with their "Table"
+// field updated with the alias name
 func (c AliasClause) All() []Clause {
 	var clauses []Clause
 	for _, col := range c.ColumnList() {
@@ -310,6 +330,8 @@ func (c AliasClause) All() []Clause {
 	return clauses
 }
 
+// ColumnList returns the aliased selectable columns with their "Table"
+// field updated with the alias name
 func (c AliasClause) ColumnList() []ColumnElem {
 	var cols []ColumnElem
 	for _, col := range c.Selectable.ColumnList() {
@@ -319,6 +341,7 @@ func (c AliasClause) ColumnList() []ColumnElem {
 	return cols
 }
 
+// DefaultName returns the alias name
 func (c AliasClause) DefaultName() string {
 	return c.Name
 }
