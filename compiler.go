@@ -237,7 +237,7 @@ func (c SQLCompiler) VisitSelect(context *CompilerContext, selectStmt SelectStmt
 	addLine := func(s string) {
 		lines = append(lines, s)
 	}
-	if !context.InSubQuery {
+	if !context.InSubQuery && selectStmt.from != nil {
 		context.DefaultTableName = selectStmt.from.DefaultName()
 	}
 
@@ -250,7 +250,9 @@ func (c SQLCompiler) VisitSelect(context *CompilerContext, selectStmt SelectStmt
 	addLine(fmt.Sprintf("SELECT %s", strings.Join(columns, ", ")))
 
 	// from
-	addLine(fmt.Sprintf("FROM %s", selectStmt.from.Accept(context)))
+	if selectStmt.from != nil {
+		addLine(fmt.Sprintf("FROM %s", selectStmt.from.Accept(context)))
+	}
 
 	// where
 	if selectStmt.WhereClause != nil {
